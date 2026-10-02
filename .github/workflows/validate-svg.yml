@@ -1,0 +1,16 @@
+name: Validate BIMI SVG
+
+on:
+  pull_request:
+  push:
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4.2.2
+      - name: Validate SVG structure and supported features
+        run: python3 scripts/validate_svg.py
