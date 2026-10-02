@@ -40,11 +40,18 @@ The hosted logo should:
 
 Do not modify, redistribute, or use the logo commercially without permission from the rights holder.
 
+## Automated validation
+
+Pull requests and pushes run a structural check on `logo-bimi.svg`. It checks that the file is valid UTF-8 XML, uses the SVG namespace, contains a title, description, and path, and avoids unsupported elements, attributes, and referenced resources.
+
+This repository check does not verify BIMI Tiny-PS conformance, hosted HTTPS availability, DNS records, sender authentication, or provider-specific requirements. Validate those separately with your email provider and a BIMI validator before deployment.
+
 ## Repository contents
 
 | File | Description |
 | --- | --- |
 | [`logo-bimi.svg`](logo-bimi.svg) | BIMI logo SVG |
+| [`scripts/validate_svg.py`](scripts/validate_svg.py) | Structural SVG validator used by CI |
 
 ## License and trademark
 
