@@ -28,6 +28,8 @@ default._bimi.example.com TXT "v=BIMI1; l=https://example.com/path/to/logo-bimi.
 
 Replace `example.com` and the SVG URL with your own domain and hosting location. Requirements can vary between receiving mail systems; BIMI may also require sender authentication and, depending on the deployment, an appropriate certificate.
 
+See the [BIMI Setup Guide](BIMI_SETUP_GUIDE.md) for deployment, validation commands, DNS examples, email-client testing, and troubleshooting.
+
 ## File requirements
 
 The hosted logo should:
@@ -42,9 +44,11 @@ Do not modify, redistribute, or use the logo commercially without permission fro
 
 ## Automated validation
 
-Pull requests and pushes run a structural check on `logo-bimi.svg`. It checks that the file is valid UTF-8 XML, uses the SVG namespace, contains a title, description, and path, and avoids unsupported elements, attributes, and referenced resources.
+Pull requests and pushes run `scripts/validate_svg.py` on `logo-bimi.svg`. It checks that the file is valid UTF-8 XML, uses the SVG namespace, contains a title, description, and path, and avoids unsupported elements, attributes, and referenced resources. It warns above 32 KB and 64 KB; CI separately rejects files larger than 64 KB.
 
-This repository check does not verify BIMI Tiny-PS conformance, hosted HTTPS availability, DNS records, sender authentication, or provider-specific requirements. Validate those separately with your email provider and a BIMI validator before deployment.
+`scripts/check_bimi_compliance.py` checks the sending domain's BIMI TXT record, HTTPS SVG accessibility, and `Content-Type`. Configure the `BIMI_DOMAIN` and optional `BIMI_SVG_URL` repository variables to run it against your deployment in CI; this network check is informational and does not block changes. See the setup guide for local commands and dependency installation.
+
+These checks do not verify BIMI Tiny-PS conformance, sender authentication, certificates, or provider-specific requirements. Validate those separately with your email provider and a BIMI validator before deployment.
 
 ## Repository contents
 
@@ -52,6 +56,8 @@ This repository check does not verify BIMI Tiny-PS conformance, hosted HTTPS ava
 | --- | --- |
 | [`logo-bimi.svg`](logo-bimi.svg) | BIMI logo SVG |
 | [`scripts/validate_svg.py`](scripts/validate_svg.py) | Structural SVG validator used by CI |
+| [`scripts/check_bimi_compliance.py`](scripts/check_bimi_compliance.py) | BIMI DNS and HTTPS hosting prerequisite checker |
+| [`BIMI_SETUP_GUIDE.md`](BIMI_SETUP_GUIDE.md) | Deployment, verification, and troubleshooting guide |
 
 ## License and trademark
 

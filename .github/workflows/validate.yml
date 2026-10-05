@@ -1,0 +1,41 @@
+name: Validate BIMI SVG
+
+on:
+  pull_request:
+  push:
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4.2.2
+      - uses: actions/setup-python@v5.6.0
+        with:
+          python-version: '3.11'
+      - name: Install compliance dependencies
+        run: python -m pip install dnspython==2.8.0 requests==2.34.2
+      - name: Validate SVG structure and supported features
+        run: python scripts/validate_svg.py
+      - name: Enforce 64 KB file size limit
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          size = Path("logo-bimi.svg").stat().st_size
+          if size > 64 * 1024:
+              raise SystemExit(f"ERROR: SVG is {size} bytes; reduce it to at most 65536 bytes (64 KB).")
+          print(f"SVG size: {size} bytes (limit: 65536)")
+          PY
+      - name: Check BIMI compliance (informational)
+        continue-on-error: true
+        env:
+          BIMI_DOMAIN: ${{ vars.BIMI_DOMAIN }}
+          BIMI_SVG_URL: ${{ vars.BIMI_SVG_URL }}
+        run: |
+          if [ -z "$BIMI_DOMAIN" ]; then
+            echo "::warning::Set the BIMI_DOMAIN repository variable to check your deployment; using example.com."
+          fi
+          python scripts/check_bimi_compliance.py \
+            --domain "${BIMI_DOMAIN:-example.com}" --svg-url "$BIMI_SVG_URL"
