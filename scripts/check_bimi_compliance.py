@@ -2,7 +2,9 @@
 """Check public BIMI DNS and SVG hosting prerequisites, not full certification."""
 
 import argparse
+import ipaddress
 import re
+import socket
 from urllib.parse import urlsplit
 
 import dns.exception
@@ -17,8 +19,19 @@ def check_https(url, errors):
             raise ValueError("an absolute HTTPS URL is required")
         if parsed.username is not None or parsed.password is not None or parsed.fragment:
             raise ValueError("credentials and fragments are not allowed")
-        parsed.port
-    except ValueError as error:
+        port = parsed.port or 443
+        try:
+            addresses = {
+                ipaddress.ip_address(address[4][0])
+                for address in socket.getaddrinfo(parsed.hostname, port, type=socket.SOCK_STREAM)
+            }
+        except OSError as error:
+            raise ValueError(f"hostname cannot be resolved ({error})") from error
+        if not addresses:
+            raise ValueError("hostname resolved to no addresses")
+        if any(not address.is_global for address in addresses):
+            raise ValueError("hostname must resolve only to public IP addresses")
+    except (ValueError, OSError) as error:
         errors.append(f"Invalid SVG URL {url!r}: {error}; publish a public HTTPS URL.")
         return False
     return True
