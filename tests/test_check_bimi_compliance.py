@@ -2,7 +2,8 @@ import socket
 import sys
 import unittest
 from pathlib import Path
-from unittest.mock import patch
+from types import SimpleNamespace
+from unittest.mock import MagicMock, patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
 import check_bimi_compliance as checker
@@ -45,6 +46,20 @@ class CheckHttpsTests(unittest.TestCase):
             self.assertEqual(connection.server_hostname, "logo.example")
             self.assertEqual(connection.assert_hostname, "logo.example")
             self.assertEqual(connection.pinned_ip, "8.8.8.8")
+
+            connection.sock = MagicMock()
+            connection.putrequest("GET", "/logo.svg")
+            connection.endheaders()
+            self.assertIn(b"Host: logo.example:8443\r\n", connection.sock.sendall.call_args.args[0])
+
+            with patch.object(checker.urllib3_connection, "create_connection", return_value=MagicMock()):
+                with patch(
+                    "urllib3.connection._ssl_wrap_socket_and_match_hostname",
+                    return_value=SimpleNamespace(socket=MagicMock(), is_verified=True),
+                ) as wrap_tls:
+                    connection.connect()
+            self.assertEqual(wrap_tls.call_args.kwargs["server_hostname"], "logo.example")
+            self.assertEqual(wrap_tls.call_args.kwargs["assert_hostname"], "logo.example")
         finally:
             adapter.close()
 
@@ -56,9 +71,10 @@ class CheckHttpsTests(unittest.TestCase):
 
         adapter = checker.PinnedHTTPSAdapter("logo.example", 443, pinned_ip)
         try:
+            connection = adapter.pool._new_conn()
             with patch.object(checker.socket, "getaddrinfo", return_value=address_info("127.0.0.1")):
                 with patch.object(checker.urllib3_connection, "create_connection") as connect:
-                    adapter.pool._new_conn()
+                    connection._new_conn()
             self.assertEqual(connect.call_args.args[0], ("8.8.8.8", 443))
         finally:
             adapter.close()

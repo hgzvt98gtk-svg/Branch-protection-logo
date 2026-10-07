@@ -91,7 +91,8 @@ def check_https(url, errors):
     except (ValueError, OSError, requests.RequestException) as error:
         errors.append(f"Invalid SVG URL {url!r}: {error}; publish a public HTTPS URL.")
         return None
-    return prepared_url, addresses.pop().compressed
+    pinned_ip = min(addresses, key=lambda address: (address.version, int(address)))
+    return prepared_url, pinned_ip.compressed
 
 
 def check_compliance(domain, svg_url=None):
@@ -185,8 +186,6 @@ def check_compliance(domain, svg_url=None):
                 f"Cannot access SVG URL: {error}. Check public access, connectivity, "
                 "and the HTTPS certificate chain."
             )
-        finally:
-            adapter.close()
     elif not target_url:
         errors.append("No SVG URL available; publish an l= URL or supply --svg-url to test hosting.")
     return errors, warnings
