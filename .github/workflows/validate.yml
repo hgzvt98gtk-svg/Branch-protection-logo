@@ -29,13 +29,11 @@ jobs:
           print(f"SVG size: {size} bytes (limit: 65536)")
           PY
       - name: Check BIMI compliance (informational)
+        if: vars.BIMI_DOMAIN != ''
         continue-on-error: true
         env:
           BIMI_DOMAIN: ${{ vars.BIMI_DOMAIN }}
           BIMI_SVG_URL: ${{ vars.BIMI_SVG_URL }}
         run: |
-          if [ -z "$BIMI_DOMAIN" ]; then
-            echo "::warning::Set the BIMI_DOMAIN repository variable to check your deployment; using example.com."
-          fi
           python scripts/check_bimi_compliance.py \
-            --domain "${BIMI_DOMAIN:-example.com}" --svg-url "$BIMI_SVG_URL"
+            --domain "$BIMI_DOMAIN" --svg-url "$BIMI_SVG_URL"
