@@ -1,12 +1,15 @@
 import socket
 import sys
 import unittest
+from collections import namedtuple
 from pathlib import Path
-from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
 import check_bimi_compliance as checker
+
+
+TLSResult = namedtuple("TLSResult", ("socket", "is_verified"))
 
 
 def address_info(address):
@@ -55,7 +58,7 @@ class CheckHttpsTests(unittest.TestCase):
             with patch.object(checker.urllib3_connection, "create_connection", return_value=MagicMock()):
                 with patch(
                     "urllib3.connection._ssl_wrap_socket_and_match_hostname",
-                    return_value=SimpleNamespace(socket=MagicMock(), is_verified=True),
+                    return_value=TLSResult(MagicMock(), True),
                 ) as wrap_tls:
                     connection.connect()
             self.assertEqual(wrap_tls.call_args.kwargs["server_hostname"], "logo.example")
