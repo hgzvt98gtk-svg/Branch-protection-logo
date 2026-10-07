@@ -10,11 +10,68 @@ from urllib.parse import urlsplit
 import dns.exception
 import dns.resolver
 import requests
+from requests.adapters import HTTPAdapter
+from urllib3.connection import HTTPSConnection
+from urllib3.connectionpool import HTTPSConnectionPool
+from urllib3.util import connection as urllib3_connection
+
+
+class PinnedHTTPSConnection(HTTPSConnection):
+    def __init__(self, *args, pinned_ip, **kwargs):
+        self.pinned_ip = pinned_ip
+        super().__init__(*args, **kwargs)
+
+    def _new_conn(self):
+        return urllib3_connection.create_connection(
+            (self.pinned_ip, self.port),
+            self.timeout,
+            source_address=self.source_address,
+            socket_options=self.socket_options,
+        )
+
+
+class PinnedHTTPSConnectionPool(HTTPSConnectionPool):
+    ConnectionCls = PinnedHTTPSConnection
+
+
+class PinnedHTTPSAdapter(HTTPAdapter):
+    def __init__(self, host, port, pinned_ip):
+        super().__init__()
+        self.host = host
+        self.port = port
+        self.pool = PinnedHTTPSConnectionPool(
+            host,
+            port=port,
+            maxsize=1,
+            block=True,
+            pinned_ip=pinned_ip,
+            server_hostname=host,
+            assert_hostname=host,
+        )
+
+    def get_connection(self, url, proxies=None):
+        parsed = urlsplit(url)
+        if (
+            parsed.scheme != "https"
+            or parsed.hostname != self.host
+            or (parsed.port or 443) != self.port
+            or proxies
+        ):
+            raise requests.exceptions.InvalidURL("Pinned HTTPS adapter received a different URL or proxy")
+        return self.pool
+
+    def get_connection_with_tls_context(self, request, verify, proxies=None, cert=None):
+        return self.get_connection(request.url, proxies)
+
+    def close(self):
+        self.pool.close()
+        super().close()
 
 
 def check_https(url, errors):
     try:
-        parsed = urlsplit(url)
+        prepared_url = requests.Request("GET", url).prepare().url
+        parsed = urlsplit(prepared_url)
         if parsed.scheme != "https" or not parsed.hostname:
             raise ValueError("an absolute HTTPS URL is required")
         if parsed.username is not None or parsed.password is not None or parsed.fragment:
@@ -31,10 +88,10 @@ def check_https(url, errors):
             raise ValueError("hostname resolved to no addresses")
         if any(not address.is_global for address in addresses):
             raise ValueError("hostname must resolve only to public IP addresses")
-    except (ValueError, OSError) as error:
+    except (ValueError, OSError, requests.RequestException) as error:
         errors.append(f"Invalid SVG URL {url!r}: {error}; publish a public HTTPS URL.")
-        return False
-    return True
+        return None
+    return prepared_url, addresses.pop().compressed
 
 
 def check_compliance(domain, svg_url=None):
@@ -83,8 +140,6 @@ def check_compliance(domain, svg_url=None):
             logo_url = tags.get("l")
             if not logo_url:
                 errors.append(f"{record_name} has no nonempty l= logo URL; add an HTTPS SVG location.")
-            elif svg_url and svg_url != logo_url:
-                check_https(logo_url, errors)
             if not tags.get("a"):
                 warnings.append("No a= certificate URL is published; some providers require a VMC or CMC.")
     except (dns.exception.DNSException, UnicodeDecodeError) as error:
@@ -99,30 +154,39 @@ def check_compliance(domain, svg_url=None):
             "update DNS or check the published URL."
         )
     target_url = svg_url or logo_url
-    if target_url and check_https(target_url, errors):
+    checked_url = check_https(target_url, errors) if target_url else None
+    if checked_url:
+        prepared_url, pinned_ip = checked_url
+        parsed_url = urlsplit(prepared_url)
+        adapter = PinnedHTTPSAdapter(parsed_url.hostname, parsed_url.port or 443, pinned_ip)
         try:
-            with requests.get(
-                target_url,
-                timeout=10,
-                allow_redirects=False,
-                stream=True,
-                headers={"Accept": "image/svg+xml"},
-            ) as response:
-                if response.status_code != 200:
-                    errors.append(
-                        f"SVG URL returned HTTP {response.status_code}; serve the SVG directly "
-                        "with HTTP 200, without authentication or redirects."
-                    )
-                content_type = response.headers.get("Content-Type", "")
-                if content_type.split(";", 1)[0].strip().lower() != "image/svg+xml":
-                    errors.append(
-                        f"SVG Content-Type is {content_type!r}; configure hosting to return image/svg+xml."
-                    )
+            with requests.Session() as session:
+                session.trust_env = False
+                session.mount("https://", adapter)
+                with session.get(
+                    prepared_url,
+                    timeout=10,
+                    allow_redirects=False,
+                    stream=True,
+                    headers={"Accept": "image/svg+xml"},
+                ) as response:
+                    if response.status_code != 200:
+                        errors.append(
+                            f"SVG URL returned HTTP {response.status_code}; serve the SVG directly "
+                            "with HTTP 200, without authentication or redirects."
+                        )
+                    content_type = response.headers.get("Content-Type", "")
+                    if content_type.split(";", 1)[0].strip().lower() != "image/svg+xml":
+                        errors.append(
+                            f"SVG Content-Type is {content_type!r}; configure hosting to return image/svg+xml."
+                        )
         except requests.RequestException as error:
             errors.append(
                 f"Cannot access SVG URL: {error}. Check public access, connectivity, "
                 "and the HTTPS certificate chain."
             )
+        finally:
+            adapter.close()
     elif not target_url:
         errors.append("No SVG URL available; publish an l= URL or supply --svg-url to test hosting.")
     return errors, warnings
