@@ -29,6 +29,8 @@ def validate():
         content = SVG_PATH.read_bytes()
     except OSError as error:
         fail(f"cannot read SVG ({error}); check that the file exists and is readable")
+    if len(content) > 64 * 1024:
+        fail(f"SVG is {len(content)} bytes; reduce it to at most 65536 bytes (64 KB)")
     try:
         text = content.decode("utf-8")
     except UnicodeDecodeError as error:
@@ -40,13 +42,7 @@ def validate():
         if encoding and encoding.group(1).lower() not in {"utf-8", "utf8"}:
             fail("XML declaration must specify UTF-8; re-export the SVG as UTF-8")
 
-    if len(content) > 64 * 1024:
-        print(
-            f"WARNING: {SVG_PATH}: {len(content)} bytes exceeds 64 KB (concern); "
-            "simplify paths and remove unnecessary metadata before deployment",
-            file=sys.stderr,
-        )
-    elif len(content) > 32 * 1024:
+    if len(content) > 32 * 1024:
         print(
             f"WARNING: {SVG_PATH}: {len(content)} bytes exceeds the recommended 32 KB; "
             "consider simplifying paths to reduce file size",
